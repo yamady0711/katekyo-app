@@ -27,7 +27,7 @@ export const MODES = {
   },
 };
 
-export const LS = { records: "katekyo.records", pass: "katekyo.pass", worker: "katekyo.worker", deck: "katekyo.deck", bank: "katekyo.bank" };
+export const LS = { records: "katekyo.records", pass: "katekyo.pass", worker: "katekyo.worker", deck: "katekyo.deck", bank: "katekyo.bank", usage: "katekyo.usage" };
 
 export function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
@@ -167,7 +167,27 @@ export async function api(path, body, signal) {
   return res;
 }
 
-export async function streamChat(mode, messages, onText) {
+// ============ AIの使用量（トークン）の記録 ============
+// 日付×科目ごとに合計する。この端末で使った分だけ（請求の正確な額は Anthropic Console で確認）
+
+const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+export function logUsage(mode, usage) {
+  if (!usage) return;
+  const ledger = lsGet(LS.usage, []);
+  const date = localDate();
+  let e = ledger.find((x) => x.date === date && x.mode === mode);
+  if (!e) { e = { date, mode, calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }; ledger.push(e); }
+  e.calls += 1;
+  e.input += usage.input_tokens ?? 0;
+  e.output += usage.output_tokens ?? 0;
+  e.cacheRead += usage.cache_read_input_tokens ?? 0;
+  e.cacheWrite += usage.cache_creation_input_tokens ?? 0;
+  const cutoff = localDate(new Date(Date.now() - 400 * 86400000));
+  lsSet(LS.usage, ledger.filter((x) => x.date >= cutoff));
+}
+
+export async function streamChat(mode, messages, onText, logMode = mode) {
   const res = await api("/api/chat", { mode, messages });
   const reader = res.body.getReader();
   const dec = new TextDecoder();
@@ -183,7 +203,8 @@ export async function streamChat(mode, messages, onText) {
       if (!line.startsWith("data:")) continue;
       const ev = JSON.parse(line.slice(5));
       if (ev.t === "text") { full += ev.v; onText(full); }
-      else if (ev.t === "error") throw new ApiError(ev.v, 500);
+      else if (ev.t === "done") logUsage(logMode, ev.usage);
+      else if (ev.t === "error") { logUsage(logMode, ev.usage); throw new ApiError(ev.v, 500); }
     }
   }
   if (!full.trim()) throw new ApiError("返事がうまく届きませんでした。もう一度送ってね", 500);

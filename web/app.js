@@ -2,11 +2,12 @@ import { SIMS } from "./sims/index.js";
 import {
   MODES, idb, h, parseReply, renderText, fmtDate, shrinkImage, imgSrc, api, streamChat,
   $app, $overlay, closeOverlay, confirmDialog, openSim, setRouter, go, topbar, busyDialog,
-  getRecords, addRecord, startSession, photoSection,
+  getRecords, addRecord, startSession, photoSection, logUsage,
 } from "./lib.js";
 import { viewHistory, viewRecords, historyRow } from "./history.js";
 import { viewQuiz, viewQuizMake, dueCount } from "./quiz.js";
 import { viewKotoba, viewShakaiQuiz, viewTokushu } from "./tools.js";
+import { overBudget } from "./usage.js";
 
 // 写真なしですぐできるツール
 const TOOLS = [
@@ -47,7 +48,7 @@ async function viewHome() {
         key === "chiri" && due ? h("span", { class: "due-pill" }, `今日のクイズ ${due}問`) : null))),
     h("div", { class: "links" },
       h("button", { class: "link-row", onclick: () => go("#records") },
-        h("span", { class: "emoji" }, "📒"), h("span", {}, h("b", {}, "記録（おうちの人）"), h("span", { class: "muted" }, "つまずきの記録・設定")))),
+        h("span", { class: "emoji" }, "📒"), h("span", {}, h("b", {}, "記録（おうちの人）"), h("span", { class: "muted" }, overBudget() ? "⚠️ AIの使用量が今月の目安をこえました" : "つまずきの記録・AIの使用量・設定")))),
   ));
 }
 
@@ -230,7 +231,7 @@ async function viewChat() {
         live.replaceWith(next);
         live = next;
         scrollDown();
-      });
+      }, session.mode);
       session.messages.push({ role: "assistant", content: reply });
       await idb.set("current", session);
       renderLog();
@@ -258,7 +259,9 @@ async function viewChat() {
     let record = null, error = null;
     try {
       const res = await api("/api/summary", { mode: session.apiMode || session.mode, messages: textOnly });
-      record = (await res.json()).record;
+      const data = await res.json();
+      record = data.record;
+      logUsage(session.mode, data.usage);
     } catch (e) { error = e.message; }
 
     const toText = (c) => (typeof c === "string" ? c : c.map((b) => b.text).join("\n"));

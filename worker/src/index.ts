@@ -156,7 +156,7 @@ function handleChat(mode: string, messages: InMessage[], env: Env, cors: Record<
         }
         const final = await stream.finalMessage();
         if (final.stop_reason === "refusal") {
-          send({ t: "error", v: "この内容にはこたえられませんでした。言い方を変えるか、新しく始めてね" });
+          send({ t: "error", v: "この内容にはこたえられませんでした。言い方を変えるか、新しく始めてね", usage: final.usage });
         } else {
           send({ t: "done", stop: final.stop_reason, usage: final.usage });
         }
@@ -226,7 +226,7 @@ async function handleSummary(mode: string, messages: InMessage[], env: Env, cors
   });
   if (response.stop_reason === "refusal") throw new Error("summary refused");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
-  return json({ record: JSON.parse(text) }, 200, cors);
+  return json({ record: JSON.parse(text), usage: response.usage }, 200, cors);
 }
 
 // ---------- /api/quiz（地理：テキストの写真からクイズカードを作る） ----------
@@ -270,6 +270,7 @@ async function handleQuiz(messages: InMessage[], env: Env, cors: Record<string, 
   if (response.stop_reason === "refusal") throw new Error("quiz refused");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
   const parsed = JSON.parse(text);
+  parsed.usage = response.usage;
   parsed.cards = (parsed.cards ?? []).filter((c: any) => c.question && c.answer && Array.isArray(c.wrongChoices) && c.wrongChoices.length >= 1);
   return json(parsed, 200, cors);
 }
