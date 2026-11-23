@@ -5,7 +5,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import commonPrompt from "../../prompts/common.md";
 import kokugoPrompt from "../../prompts/kokugo-kijutsu.md";
 import tentaiPrompt from "../../prompts/rika-tentai.md";
+import sansuPrompt from "../../prompts/sansu-baai.md";
+import chiriPrompt from "../../prompts/chiri.md";
 import summaryPrompt from "../../prompts/summary.md";
+import quizPrompt from "../../prompts/chiri-quiz.md";
 
 interface Env {
   ANTHROPIC_API_KEY: string;
@@ -20,6 +23,8 @@ const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 const MODES: Record<string, { label: string; prompt: string }> = {
   "kokugo-kijutsu": { label: "国語・記述", prompt: kokugoPrompt },
   "rika-tentai": { label: "理科・天体", prompt: tentaiPrompt },
+  "sansu-baai": { label: "算数・場合の数と規則性", prompt: sansuPrompt },
+  "chiri": { label: "社会・地理", prompt: chiriPrompt },
 };
 
 const LIMITS = {
@@ -176,8 +181,8 @@ const SUMMARY_SCHEMA = {
   properties: {
     unit: { type: "string", description: "単元・分野（例：物語文の心情記述、月の満ち欠け）" },
     problem: { type: "string", description: "どの問題か（塾テキストの回・問題番号がわかれば含める）" },
-    questionType: { type: "string", description: "設問の型（国語：理由／気持ち／説明・言い換え／変化。天体：月の満ち欠け・太陽の動き など）" },
-    stuckStage: { type: "string", description: "つまずいた段階（国語は進め方の0〜7の番号と名前。例：「2 根拠探し」）。つまずきがなければ「なし」" },
+    questionType: { type: "string", description: "設問の型（国語：理由／気持ち／説明・言い換え／変化。天体：月の満ち欠け・太陽の動き など。算数：場合の数（並べ方・組み合わせ・道順など）／規則性（周期・群数列・等差数列など）。地理：工業地帯・農作物 など）" },
+    stuckStage: { type: "string", description: "つまずいた段階（科目の「進め方」の番号と名前。例：「2 根拠探し」）。つまずきがなければ「なし」" },
     stumbles: { type: "array", items: { type: "string" }, description: "つまずいた点（具体的に）" },
     achieved: { type: "string", description: "自力でできたこと" },
     hintLevel: { type: "integer", description: "使った一番強いヒントの段階（0=なし〜4=型を見せた）" },
@@ -222,6 +227,51 @@ async function handleSummary(mode: string, messages: InMessage[], env: Env, cors
   return json({ record: JSON.parse(text) }, 200, cors);
 }
 
+// ---------- /api/quiz（地理：テキストの写真からクイズカードを作る） ----------
+
+const QUIZ_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards", "note"],
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["unit", "question", "answer", "wrongChoices", "why"],
+        properties: {
+          unit: { type: "string", description: "単元（例：中京工業地帯、米の生産）" },
+          question: { type: "string", description: "問題文（小6向け、短く）" },
+          answer: { type: "string", description: "正解（短い語句）" },
+          wrongChoices: { type: "array", items: { type: "string" }, description: "まちがいの選択肢3つ" },
+          why: { type: "string", description: "なぜそうなるのか（テキストにもとづく理由。2文以内）" },
+        },
+      },
+    },
+    note: { type: "string", description: "写真が読めなかった所など、お父さんへの注意。なければ空文字" },
+  },
+} as const;
+
+async function handleQuiz(messages: InMessage[], env: Env, cors: Record<string, string>): Promise<Response> {
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  const stream = client.beta.messages.stream({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: [FALLBACK_BETA],
+    fallbacks: "default",
+    output_config: { effort: "medium", format: { type: "json_schema", schema: QUIZ_SCHEMA } },
+    system: quizPrompt,
+    messages,
+  });
+  const response = await stream.finalMessage();
+  if (response.stop_reason === "refusal") throw new Error("quiz refused");
+  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
+  const parsed = JSON.parse(text);
+  parsed.cards = (parsed.cards ?? []).filter((c: any) => c.question && c.answer && Array.isArray(c.wrongChoices) && c.wrongChoices.length >= 1);
+  return json(parsed, 200, cors);
+}
+
 // ---------- ルーティング ----------
 
 export default {
@@ -233,7 +283,7 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (!cors["Access-Control-Allow-Origin"]) return json({ error: "このオリジンからは使えません" }, 403, cors);
     if (request.method !== "POST") return json({ error: "POST のみです" }, 405, cors);
-    if (url.pathname !== "/api/chat" && url.pathname !== "/api/summary") return json({ error: "not found" }, 404, cors);
+    if (!["/api/chat", "/api/summary", "/api/quiz"].includes(url.pathname)) return json({ error: "not found" }, 404, cors);
 
     if (!env.APP_PASSCODE || !timingSafeEqual(request.headers.get("X-App-Pass") ?? "", env.APP_PASSCODE)) {
       return json({ error: "合言葉がちがいます" }, 401, cors);
@@ -246,9 +296,13 @@ export default {
       const body: any = await request.json();
       const mode = String(body?.mode ?? "");
       if (!MODES[mode]) throw new BadRequest("モードが不正です");
-      const isChat = url.pathname === "/api/chat";
-      const messages = validateMessages(body?.messages, isChat);
-      if (isChat) return handleChat(mode, messages, env, cors);
+      const isSummary = url.pathname === "/api/summary";
+      const messages = validateMessages(body?.messages, !isSummary);
+      if (url.pathname === "/api/chat") return handleChat(mode, messages, env, cors);
+      if (url.pathname === "/api/quiz") {
+        if (mode !== "chiri" || messages.length !== 1) throw new BadRequest("クイズは地理の写真1回分だけ作れます");
+        return await handleQuiz(messages, env, cors);
+      }
       return await handleSummary(mode, messages, env, cors);
     } catch (err) {
       console.error(err);

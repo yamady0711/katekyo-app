@@ -1,8 +1,8 @@
 // アプリの画面ファイルだけをキャッシュする（AIとの通信はキャッシュしない）
 // ファイルを更新したら VERSION を上げる
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL = [
-  "./", "index.html", "style.css", "app.js", "config.js", "manifest.json",
+  "./", "index.html", "style.css", "app.js", "lib.js", "history.js", "quiz.js", "config.js", "manifest.json",
   "sims/index.js", "sims/util.js", "sims/moon.js", "sims/sun.js", "sims/stars.js",
   "icons/icon-192.png", "icons/apple-touch-icon.png",
 ];
