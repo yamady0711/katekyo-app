@@ -1,6 +1,7 @@
 // 共通部品：保存・API・画面部品
 import { WORKER_URL } from "./config.js";
 import { SIMS } from "./sims/index.js";
+import { currentThemeKey } from "./themes.js";
 
 // ============ 設定・保存 ============
 
@@ -187,8 +188,8 @@ export function logUsage(mode, usage) {
   lsSet(LS.usage, ledger.filter((x) => x.date >= cutoff));
 }
 
-export async function streamChat(mode, messages, onText, logMode = mode) {
-  const res = await api("/api/chat", { mode, messages });
+export async function streamChat(mode, messages, onText, logMode = mode, theme = "") {
+  const res = await api("/api/chat", { mode, messages, theme });
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "", full = "";
@@ -264,6 +265,9 @@ export function openSim(key) {
 // ============ ルーター・共通の画面部品 ============
 
 let router = () => {};
+// 画面の切りかえ番号。非同期の画面は、待っているあいだに別の画面に移ったら描画しない
+export const nav = { seq: 0 };
+export const isStale = (seq) => seq !== nav.seq;
 export function setRouter(fn) { router = fn; }
 export function go(hash) { if (location.hash === hash) router(); else location.hash = hash; }
 
@@ -299,6 +303,14 @@ export function addRecord(rec) {
   records.unshift(rec);
   return lsSet(LS.records, records);
 }
+// 同じ id の記録があれば上書き（中身はまぜる）、なければ先頭に追加
+export function upsertRecord(rec) {
+  const records = getRecords();
+  const i = records.findIndex((r) => r.id === rec.id);
+  if (i >= 0) records[i] = { ...records[i], ...rec };
+  else records.unshift(rec);
+  return lsSet(LS.records, records);
+}
 export const findRecord = (id) => getRecords().find((r) => r.id === id);
 export function deleteRecord(id) {
   lsSet(LS.records, getRecords().filter((r) => r.id !== id));
@@ -308,7 +320,7 @@ export const newId = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random
 
 // 新しい学習の最初に添える「これまでの記録」（同じ科目の直近3回）
 export function historyContext(mode) {
-  const recent = getRecords().filter((r) => r.mode === mode && r.kind !== "quiz").slice(0, 3);
+  const recent = getRecords().filter((r) => r.mode === mode && r.kind !== "quiz" && !r.inProgress).slice(0, 3);
   if (!recent.length) return "";
   const lines = recent.map((r) => {
     const d = new Date(r.startedAt);
@@ -320,8 +332,69 @@ export function historyContext(mode) {
   return `【これまでの記録（参考）】\n${lines.join("\n")}`.slice(0, 1500);
 }
 
+// ============ 対話の学習を「とちゅう」でも記録する ============
+
+const isContextBlock = (b) => b.type === "text" && b.text.startsWith("【これまでの記録");
+const toText = (c) => (typeof c === "string" ? c : c.map((b) => b.text).join("\n"));
+
+// 記録用：写真は「［写真］」に置きかえ、これまでの記録（参考）は除く
+export function textOnlyMessages(session) {
+  return session.messages.map((x, i) => ({
+    role: x.role,
+    content: typeof x.content === "string" ? x.content
+      : x.content.filter((b) => !(i === 0 && isContextBlock(b))).map((b) => (b.type === "text" ? b : { type: "text", text: "［写真］" })),
+  }));
+}
+
+const hasReply = (session) => session.messages.some((x) => x.role === "assistant");
+
+// 会話の中身（要約なし）を記録に保存する。返事が1回もなければ何もしない
+export function saveSessionProgress(session, extra = {}) {
+  if (!hasReply(session)) return;
+  const chatLog = textOnlyMessages(session).slice(1).map((x) => ({
+    role: x.role,
+    text: x.role === "assistant" ? parseReply(toText(x.content)).text : toText(x.content),
+  }));
+  const existing = findRecord(session.id);
+  upsertRecord({
+    id: session.id, kind: "chat", mode: session.mode, startedAt: session.startedAt, updatedAt: new Date().toISOString(),
+    turns: session.messages.filter((x) => x.role === "user").length,
+    hasPhotos: session.setup.problem + session.setup.answer > 0, seedLabel: session.seedLabel || null,
+    log: chatLog, transcript: chatLog.map((x) => `${x.role === "user" ? "子ども" : "先生"}: ${x.text}`).join("\n\n"),
+    ...(existing ? {} : { unit: session.seedLabel ? session.seedLabel.replace(/^.*?：/, "") : "（とちゅうの学習）", finalState: "とちゅう", parentAttention: "medium" }),
+    inProgress: true,
+    ...extra,
+  });
+}
+
+// 会話を要約して、記録に「つまずき」などを書きこむ
+export async function summarizeSession(session, { stoppedEarly = false } = {}) {
+  const msgs = textOnlyMessages(session);
+  if (msgs[msgs.length - 1].role === "user" && msgs.length > 1) msgs.push({ role: "assistant", content: "（返事なし）" });
+  if (stoppedEarly) msgs.push({ role: "user", content: "（ここで子どもは「おわる」を押さずに学習をやめました）" });
+  const res = await api("/api/summary", { mode: session.apiMode || session.mode, messages: msgs });
+  const data = await res.json();
+  logUsage(session.mode, data.usage);
+  return data.record;
+}
+
+// とちゅうの学習を閉じる（記録は残す）。要約はうしろで作る
+export async function closeCurrentSession() {
+  const session = await idb.get("current");
+  if (!session) return;
+  await idb.del("current");
+  if (!hasReply(session)) return;
+  saveSessionProgress(session, { inProgress: false, stoppedEarly: true, endedAt: new Date().toISOString() });
+  const userTurns = session.messages.filter((x) => x.role === "user").length;
+  if (userTurns < 2) return; // 写真を送っただけなら要約しない
+  summarizeSession(session, { stoppedEarly: true })
+    .then((rec) => upsertRecord({ id: session.id, ...rec, stoppedEarly: true, inProgress: false }))
+    .catch(() => {});
+}
+
 // 写真を使った学習セッションを作って保存する
 export async function startSession(mode, { problem = [], answer = [] }, opts = {}) {
+  await closeCurrentSession(); // とちゅうの学習があれば、記録を残して閉じる
   const content = [];
   const ctx = historyContext(mode);
   if (ctx) content.push({ type: "text", text: ctx });
@@ -343,9 +416,13 @@ export async function startSession(mode, { problem = [], answer = [] }, opts = {
     setup: { problem: problem.length, answer: answer.length },
     seedLabel: opts.seedLabel || null,
     apiMode: opts.apiMode || null, // AIに使うプロンプトを科目と別にしたいとき（例：tool-help）
+    theme: currentThemeKey(), // 応援テーマ（学習の途中では変えない＝キャッシュが効く）
     messages: [{ role: "user", content }],
   };
   await idb.set("current", session);
+  // 問題の写真は最初に保存しておく（ふりかえりで見たり、もう一度やったりできるように）
+  const images = content.filter((b) => b.type === "image").map((b) => b.source);
+  if (images.length) await idb.set(`photos:${session.id}`, { setup: session.setup, images });
   return session;
 }
 

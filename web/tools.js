@@ -1,6 +1,7 @@
 // すぐできるツール（写真なし）：ことばクイズ・社会クイズ・特殊算れんしゅう
-import { LS, lsGet, lsSet, h, $app, go, topbar, confirmDialog } from "./lib.js";
-import { runQuiz, showQuizResult } from "./quiz.js";
+import { LS, lsGet, lsSet, h, $app, go, topbar, confirmDialog, newId } from "./lib.js";
+import { runQuiz, showQuizResult, saveQuizRecord } from "./quiz.js";
+import { cheer } from "./themes.js";
 import { KOKUGO, KOKUGO_CATS } from "./data/kokugo.js";
 import { SHAKAI, SHAKAI_CATS } from "./data/shakai.js";
 import { makeProblem, TOKUSHU_TYPES } from "./data/tokushu.js";
@@ -95,11 +96,18 @@ function drill(type, typeName) {
   const results = [];
   let index = 0;
   const startedAt = new Date().toISOString();
+  const recId = newId();
+  const unitLabel = `特殊算（${typeName}）`;
   const body = h("div", { class: "page quiz" });
   $app.replaceChildren(topbar(`🧮 ${typeName}`, async () => {
     if (!results.length) return go("#tool/tokushu");
-    if (await confirmDialog("れんしゅうをやめる？", "やめる", "ここまでの結果は記録されません")) go("#tool/tokushu");
+    if (await confirmDialog("れんしゅうをやめる？", "やめる", "ここまでの結果は「ふりかえり」に記録されるよ")) go("#tool/tokushu");
   }), body);
+
+  const wrongList = () => results.filter((r) => !r.correct).map((r) => ({
+    question: r.p.q, answer: `${r.p.answer}${r.p.unit}`, chosen: r.chosen != null ? `${r.chosen}${r.p.unit}` : "（解き方を見た）",
+    why: r.p.solution.join(" ／ "), unit: r.p.title,
+  }));
 
   function show() {
     const p = problems[index];
@@ -125,7 +133,7 @@ function drill(type, typeName) {
       if (!input.value.trim() || Number.isNaN(v)) { input.focus(); return; }
       if (v === p.answer) finishProblem(v);
       else {
-        feedback.replaceChildren(h("div", { class: "feedback ng" }, h("div", {}, `${v}${p.unit}…ちがうみたい。もう一度考えてみよう。ヒントも使ってね。`)));
+        feedback.replaceChildren(h("div", { class: "feedback ng" }, h("div", {}, `${v}${p.unit}…ちがうみたい。ヒントも使ってね。`), h("div", { class: "cheer" }, cheer("wrong"))));
         if (!p.firstWrong) p.firstWrong = v;
       }
     }
@@ -134,10 +142,13 @@ function drill(type, typeName) {
       done = true;
       const correct = v === p.answer && !p.firstWrong;
       results.push({ p, correct, chosen: p.firstWrong ?? v, hints: hintsShown });
+      const w = wrongList(); // 1問ごとに「とちゅうまで」の記録を保存
+      saveQuizRecord({ id: recId, mode: "sansu-baai", unitLabel, askMode: "tool", startedAt, score: results.length - w.length, total: results.length, wrong: w, partial: true, plannedTotal: problems.length });
       [input, checkBtn, hintBtn, giveUpBtn].forEach((x) => (x.disabled = true));
       feedback.replaceChildren(
         h("div", { class: `feedback ${v === p.answer ? "ok" : "ng"}` },
-          h("div", { class: "big" }, v === p.answer ? (correct ? "⭕ せいかい！" : "⭕ せいかい！（2回目で）") : `答えは ${p.answer}${p.unit}`),
+          h("div", { class: "big" }, v === p.answer ? (correct ? `⭕ せいかい！ ${cheer("correct")}` : "⭕ せいかい！（2回目で）") : `答えは ${p.answer}${p.unit}`),
+          v === p.answer && correct ? null : h("div", { class: "cheer" }, cheer("wrong")),
           h("b", {}, "解き方"),
           h("ol", { class: "solution" }, p.solution.map((s) => h("li", {}, s)))),
         h("button", { class: "btn wide", onclick: next }, index + 1 < problems.length ? "つぎの問題" : "結果を見る"));
@@ -161,12 +172,9 @@ function drill(type, typeName) {
     index++;
     if (index < problems.length) show();
     else {
-      const wrong = results.filter((r) => !r.correct).map((r) => ({
-        question: r.p.q, answer: `${r.p.answer}${r.p.unit}`, chosen: r.chosen != null ? `${r.chosen}${r.p.unit}` : "（解き方を見た）",
-        why: r.p.solution.join(" ／ "), unit: r.p.title,
-      }));
+      const wrong = wrongList();
       showQuizResult({
-        mode: "sansu-baai", unitLabel: `特殊算（${typeName}）`, askMode: "tool", back: "#tool/tokushu", startedAt,
+        id: recId, mode: "sansu-baai", unitLabel, askMode: "tool", back: "#tool/tokushu", startedAt,
         score: results.length - wrong.length, total: results.length, wrong, body,
       });
     }

@@ -39,6 +39,7 @@
 - `worker/`：Cloudflare Worker（`/api/chat` ストリーミング、`/api/summary` 記録作成、`/api/quiz` 地理クイズカード作成）
 - `web/`：PWA（ビルドなしの素のJS）。`web/sims/` は天体シミュレーター、`web/quiz.js` は地理クイズ、`web/history.js` はふりかえり
 - `web/tools.js` と `web/data/`：写真なしの「すぐできる」ツール（ことばクイズ・社会クイズ・特殊算れんしゅう）。とっかかり用として、例外的に問題をアプリ内に持つ（父の判断）。特殊算は数字をランダムに作り、答えはコードで計算する
+- `web/themes.js` と `prompts/themes/`：応援テーマ（息子の好きなものの世界観）。イラストはオリジナルSVGのみ。実在の人物・作品の登場人物のセリフは作らない（各テーマのオリジナル応援役が励ます）
 - 記録は localStorage（`katekyo.records`）、クイズカードは `katekyo.deck`、ツールの問題ごとの成績は `katekyo.bank`、AIの使用量（日付×科目のトークン数）は `katekyo.usage`、学習中のセッションと問題の写真は IndexedDB
 - 手順は README.md
 
