@@ -1,7 +1,7 @@
 // 地理クイズ：塾テキストの写真からカードを作り、間隔をあけてくり返し出題する
 import {
   LS, lsGet, lsSet, h, $app, $overlay, closeOverlay, confirmDialog, go, topbar, busyDialog, toast,
-  api, addRecord, newId, photoSection, logUsage,
+  api, upsertRecord, newId, photoSection, logUsage,
 } from "./lib.js";
 import { askWhy } from "./history.js";
 
@@ -75,11 +75,23 @@ export function runQuiz({ title, back, cards, mode, unitLabel, onAnswer = () => 
   const retried = new Set();
   let index = 0;
   const startedAt = new Date().toISOString();
+  const recId = newId();
   const body = h("div", { class: "page quiz" });
   $app.replaceChildren(topbar(title, async () => {
-    if (index === 0 && !results.size) return go(back);
-    if (await confirmDialog("クイズをやめる？", "やめる", "ここまでの結果は記録されません")) go(back);
+    if (!results.size) return go(back);
+    if (await confirmDialog("クイズをやめる？", "やめる", "ここまでの結果は「ふりかえり」に記録されるよ")) go(back);
   }), body);
+
+  const wrongOf = (list) => list.filter((c) => results.has(c.id) && !results.get(c.id).correct).map((c) => ({
+    question: c.question, answer: c.answer, chosen: results.get(c.id)?.chosen, why: c.why, unit: c.unit,
+  }));
+
+  // 1問答えるごとに「とちゅうまで」の記録を保存する（途中でやめても残る）
+  function saveProgress() {
+    const answered = queue.slice(0, total).filter((c) => results.has(c.id));
+    const wrong = wrongOf(answered);
+    saveQuizRecord({ id: recId, mode, unitLabel, askMode, startedAt, score: answered.length - wrong.length, total: answered.length, wrong, partial: true, plannedTotal: total });
+  }
 
   function show() {
     const card = queue[index];
@@ -101,6 +113,7 @@ export function runQuiz({ title, back, cards, mode, unitLabel, onAnswer = () => 
       if (!isRetry) {
         results.set(card.id, { correct, chosen });
         onAnswer(card, correct);
+        saveProgress();
       }
       if (!correct && !retried.has(card.id)) { retried.add(card.id); queue.push(card); }
       feedback.replaceChildren(h("div", { class: `feedback ${correct ? "ok" : "ng"}` },
@@ -125,28 +138,30 @@ export function runQuiz({ title, back, cards, mode, unitLabel, onAnswer = () => 
   }
 
   function finish() {
-    const first = queue.slice(0, total);
-    const wrong = first.filter((c) => !results.get(c.id)?.correct).map((c) => ({
-      question: c.question, answer: c.answer, chosen: results.get(c.id)?.chosen, why: c.why, unit: c.unit,
-    }));
-    const score = total - wrong.length;
-    showQuizResult({ mode, unitLabel, askMode, back, startedAt, score, total, wrong, body });
+    const wrong = wrongOf(queue.slice(0, total));
+    showQuizResult({ id: recId, mode, unitLabel, askMode, back, startedAt, score: total - wrong.length, total, wrong, body });
   }
 
   show();
 }
 
-// 結果を記録して表示する（特殊算れんしゅうでも使う）
-export function showQuizResult({ mode, unitLabel, askMode, back, startedAt, score, total, wrong, body }) {
-  const rate = score / total;
-  addRecord({
-    id: newId(), kind: "quiz", mode, askMode, startedAt, endedAt: new Date().toISOString(),
-    unit: unitLabel, score, total, wrong,
+// クイズ・特殊算の記録を保存する（同じ id なら上書き）
+export function saveQuizRecord({ id, mode, unitLabel, askMode, startedAt, score, total, wrong, partial = false, plannedTotal = total }) {
+  const rate = total ? score / total : 0;
+  upsertRecord({
+    id, kind: "quiz", mode, askMode, startedAt, endedAt: new Date().toISOString(),
+    unit: unitLabel, score, total, wrong, partial, plannedTotal,
     stumbles: wrong.map((w) => `${w.question} → ${w.answer}（答え：${w.chosen ?? "—"}）`),
-    finalState: rate === 1 ? "自力で完成" : "未完成",
+    finalState: !partial && rate === 1 ? "自力で完成" : "未完成",
     parentAttention: rate >= 0.8 ? "low" : rate >= 0.5 ? "medium" : "high",
-    parentNote: `${unitLabel}：正答率 ${Math.round(rate * 100)}%`,
+    parentNote: `${unitLabel}：正答率 ${Math.round(rate * 100)}%${partial ? `（${plannedTotal}問中${total}問でやめた）` : ""}`,
   });
+}
+
+// 結果を記録して表示する（特殊算れんしゅうでも使う）
+export function showQuizResult({ id = newId(), mode, unitLabel, askMode, back, startedAt, score, total, wrong, body }) {
+  const rate = score / total;
+  saveQuizRecord({ id, mode, unitLabel, askMode, startedAt, score, total, wrong, partial: false });
   body.replaceChildren(
     h("div", { class: "center" },
       h("div", { class: "big-emoji" }, rate === 1 ? "🌟" : rate >= 0.7 ? "😊" : "💪"),

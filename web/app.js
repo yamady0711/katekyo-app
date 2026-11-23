@@ -2,7 +2,7 @@ import { SIMS } from "./sims/index.js";
 import {
   MODES, idb, h, parseReply, renderText, fmtDate, shrinkImage, imgSrc, api, streamChat,
   $app, $overlay, closeOverlay, confirmDialog, openSim, setRouter, go, topbar, busyDialog,
-  getRecords, addRecord, startSession, photoSection, logUsage,
+  getRecords, upsertRecord, startSession, photoSection, saveSessionProgress, summarizeSession, closeCurrentSession,
 } from "./lib.js";
 import { viewHistory, viewRecords, historyRow } from "./history.js";
 import { viewQuiz, viewQuizMake, dueCount } from "./quiz.js";
@@ -27,8 +27,8 @@ function resumeBanner(current, onDiscard) {
     h("span", {}, `とちゅうの学習があります（${MODES[current.mode]?.label ?? ""}・${fmtDate(current.startedAt)}）`),
     h("button", { class: "btn small", onclick: () => go("#chat") }, "つづける"),
     h("button", { class: "btn small plain", onclick: async () => {
-      if (await confirmDialog("とちゅうの学習をすてる？", "すてる", "記録は残りません")) { await idb.del("current"); onDiscard(); }
-    } }, "すてる"));
+      if (await confirmDialog("とちゅうの学習をおわりにする？", "おわりにする", "そこまでの記録は「ふりかえり」に残るよ")) { await closeCurrentSession(); onDiscard(); }
+    } }, "おわりにする"));
 }
 
 async function viewHome() {
@@ -61,8 +61,8 @@ async function viewSubject(mode) {
   const records = getRecords().filter((r) => r.mode === mode);
 
   async function startNew() {
-    if (current && !(await confirmDialog("とちゅうの学習があるよ。新しく始める？", "新しく始める", "とちゅうの学習は消えます"))) return;
-    await idb.del("current");
+    if (current && !(await confirmDialog("とちゅうの学習があるよ。新しく始める？", "新しく始める", "とちゅうの学習は、そこまで「ふりかえり」に記録されるよ"))) return;
+    await closeCurrentSession();
     go(`#setup/${mode}`);
   }
 
@@ -90,7 +90,7 @@ async function viewSubject(mode) {
       h("div", { class: "actions" }, actions),
       h("h2", {}, "ふりかえり"),
       records.length
-        ? h("div", { class: "history-list" }, records.map(historyRow))
+        ? h("div", { class: "history-list" }, records.map((r) => historyRow(r, current?.id)))
         : h("p", { class: "muted" }, "まだ記録はありません。学習を「おわる」と、ここに残るよ。")),
   );
 }
@@ -134,8 +134,6 @@ function viewSetup(mode) {
 }
 
 // ============ 画面：チャット ============
-
-const isContextBlock = (b) => b.type === "text" && b.text.startsWith("【これまでの記録");
 
 async function viewChat() {
   const session = await idb.get("current");
@@ -219,6 +217,7 @@ async function viewChat() {
       textarea.value = ""; autosize();
       pendingImage = null; pendingBar.hidden = true;
       await idb.set("current", session);
+      saveSessionProgress(session);
     }
     renderLog();
     setSending(true);
@@ -234,6 +233,7 @@ async function viewChat() {
       }, session.mode);
       session.messages.push({ role: "assistant", content: reply });
       await idb.set("current", session);
+      saveSessionProgress(session);
       renderLog();
     } catch (e) {
       renderLog();
@@ -249,37 +249,14 @@ async function viewChat() {
     const turns = session.messages.filter((x) => x.role === "user").length;
     if (!(await confirmDialog("今日はここまでにする？", "おわる", turns <= 1 ? "まだほとんど話していないけど、おわりにしてもいい？" : "がんばったことを記録するよ"))) return;
     busyDialog("記録をつくっています…");
-    // 記録用：写真は「［写真］」に置きかえ、これまでの記録（参考）は除く
-    const textOnly = session.messages.map((x, i) => ({
-      role: x.role,
-      content: typeof x.content === "string" ? x.content
-        : x.content.filter((b) => !(i === 0 && isContextBlock(b))).map((b) => (b.type === "text" ? b : { type: "text", text: "［写真］" })),
-    }));
-    if (textOnly[textOnly.length - 1].role === "user" && textOnly.length > 1) textOnly.push({ role: "assistant", content: "（返事なし）" });
     let record = null, error = null;
-    try {
-      const res = await api("/api/summary", { mode: session.apiMode || session.mode, messages: textOnly });
-      const data = await res.json();
-      record = data.record;
-      logUsage(session.mode, data.usage);
-    } catch (e) { error = e.message; }
-
-    const toText = (c) => (typeof c === "string" ? c : c.map((b) => b.text).join("\n"));
-    const chatLog = textOnly.slice(1).map((x) => ({
-      role: x.role,
-      text: x.role === "assistant" ? parseReply(toText(x.content)).text : toText(x.content),
-    }));
-    const transcript = chatLog.map((x) => `${x.role === "user" ? "子ども" : "先生"}: ${x.text}`).join("\n\n");
-
-    // 問題の写真は IndexedDB に残し、ふりかえりで見たり、もう一度やったりできるようにする
-    const imageBlocks = session.messages[0].content.filter((b) => b.type === "image");
-    if (imageBlocks.length) await idb.set(`photos:${session.id}`, { setup: session.setup, images: imageBlocks.map((b) => b.source) });
-
-    const saved = addRecord({
+    try { record = await summarizeSession(session); } catch (e) { error = e.message; }
+    saveSessionProgress(session); // 会話の中身（返事がまだない場合も含めて）を保存
+    const saved = upsertRecord({
       id: session.id, kind: "chat", mode: session.mode, startedAt: session.startedAt, endedAt: new Date().toISOString(),
-      turns, hasPhotos: imageBlocks.length > 0, seedLabel: session.seedLabel || null,
+      turns, hasPhotos: session.setup.problem + session.setup.answer > 0, seedLabel: session.seedLabel || null,
+      inProgress: false, stoppedEarly: false,
       ...(record ?? { unit: "（記録の自動作成に失敗）", problem: "", questionType: "", stuckStage: "", nextFocus: "", stumbles: [], achieved: "", hintLevel: null, finalState: "未完成", parentAttention: "high", parentNote: `会話の記録を直接見てください（${error}）`, aiConcerns: "" }),
-      log: chatLog, transcript,
     });
     await idb.del("current");
     $overlay.replaceChildren(h("div", { class: "dialog" },

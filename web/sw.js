@@ -1,6 +1,6 @@
 // アプリの画面ファイルだけをキャッシュする（AIとの通信はキャッシュしない）
 // ファイルを更新したら VERSION を上げる
-const VERSION = "v4";
+const VERSION = "v5";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "lib.js", "history.js", "quiz.js", "tools.js", "usage.js", "data/kokugo.js", "data/shakai.js", "data/tokushu.js", "config.js", "manifest.json",
   "sims/index.js", "sims/util.js", "sims/moon.js", "sims/sun.js", "sims/stars.js",

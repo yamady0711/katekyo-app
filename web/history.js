@@ -8,16 +8,28 @@ import { usageSection, overBudget } from "./usage.js";
 
 const STATE_ICON = { "自力で完成": "🌟", "ヒントで完成": "⭕", "未完成": "🔁" };
 
+// 記録の状態を表す短いラベル（とちゅう・とちゅうでやめた など）
+export function progressLabel(r, currentId) {
+  if (r.kind === "quiz") return r.partial ? "とちゅうまで" : "";
+  if (r.inProgress) return r.id === currentId ? "とちゅう（つづきからできる）" : "とちゅう";
+  if (r.stoppedEarly) return "とちゅうでやめた";
+  return "";
+}
+
 // 科目ページの「ふりかえり」一覧の1行
-export function historyRow(r) {
+export function historyRow(r, currentId = null) {
   const isQuiz = r.kind === "quiz";
+  const label = progressLabel(r, currentId);
   const title = isQuiz ? `${r.unit || "クイズ"} ${r.score}/${r.total}問正解` : r.unit || "（記録）";
   const sub = isQuiz
-    ? (r.wrong?.length ? `まちがえた：${r.wrong.map((w) => w.answer).slice(0, 3).join("、")}` : "全問正解！")
+    ? (r.wrong?.length ? `まちがえた：${r.wrong.map((w) => w.answer).slice(0, 3).join("、")}` : r.total ? "全問正解！" : "")
     : (r.nextFocus ? `つぎ：${r.nextFocus}` : r.achieved || "");
-  return h("button", { class: "history-row", onclick: () => go(`#history/${encodeURIComponent(r.id)}`) },
-    h("span", { class: "icon" }, isQuiz ? "🃏" : STATE_ICON[r.finalState] ?? "📄"),
-    h("span", { class: "main" }, h("span", { class: "date" }, fmtDate(r.startedAt)), h("b", {}, title), sub ? h("span", { class: "muted sub" }, sub) : null),
+  const icon = isQuiz ? "🃏" : r.inProgress ? "⏸" : STATE_ICON[r.finalState] ?? "📄";
+  return h("button", { class: "history-row", onclick: () => go(r.inProgress && r.id === currentId ? "#chat" : `#history/${encodeURIComponent(r.id)}`) },
+    h("span", { class: "icon" }, icon),
+    h("span", { class: "main" },
+      h("span", { class: "date" }, fmtDate(r.startedAt), label ? h("span", { class: "progress-tag" }, label) : null),
+      h("b", {}, title), sub ? h("span", { class: "muted sub" }, sub) : null),
     h("span", { class: "chev" }, "›"));
 }
 
@@ -45,6 +57,12 @@ export async function viewHistory(id) {
     r.problem ? h("div", { class: "muted" }, r.problem) : null,
     r.seedLabel ? h("div", { class: "muted" }, r.seedLabel) : null);
   body.append(head);
+  const current = await idb.get("current");
+  const label = progressLabel(r, current?.id);
+  if (label) head.querySelector(".head").append(h("span", { class: "progress-tag" }, label));
+  if (r.inProgress && current?.id === r.id) {
+    body.append(h("button", { class: "btn wide", style: "margin-top:12px", onclick: () => go("#chat") }, "▶ つづきからやる"));
+  }
 
   if (r.kind === "quiz") {
     if (!r.wrong?.length) body.append(h("p", {}, "全問正解でした！🌟"));
@@ -86,7 +104,7 @@ export async function viewHistory(id) {
 
 async function retry(r, photos) {
   const current = await idb.get("current");
-  if (current && !(await confirmDialog("とちゅうの学習があるよ。この問題を始める？", "始める", "とちゅうの学習は消えます"))) return;
+  if (current && !(await confirmDialog("とちゅうの学習があるよ。この問題を始める？", "始める", "とちゅうの学習は、そこまで「ふりかえり」に記録されるよ"))) return;
   const n = photos.setup?.problem ?? photos.images.length;
   const toPhoto = (s) => ({ media_type: s.media_type, data: s.data });
   await startSession(r.mode, { problem: photos.images.slice(0, n).map(toPhoto), answer: photos.images.slice(n).map(toPhoto) });
@@ -97,7 +115,7 @@ async function retry(r, photos) {
 // askMode "chiri"：地理カード（地理の対話で）／"tool"：かんたんクイズ・特殊算（ふりかえり用のプロンプトで）
 export async function askWhy(w, mode = "chiri", askMode = "chiri") {
   const current = await idb.get("current");
-  if (current && !(await confirmDialog("とちゅうの学習があるよ。この問題を始める？", "始める", "とちゅうの学習は消えます"))) return;
+  if (current && !(await confirmDialog("とちゅうの学習があるよ。この問題を始める？", "始める", "とちゅうの学習は、そこまで「ふりかえり」に記録されるよ"))) return;
   if (askMode === "chiri") {
     const seedText = `【地理クイズでまちがえた問題】\n問題：${w.question}\n正解：${w.answer}\n${w.chosen ? `ぼくの答え：${w.chosen}\n` : ""}テキストにもとづく説明：${w.why || "（なし）"}\n\nなぜそうなるのか、いっしょに考えたいです。`;
     await startSession("chiri", {}, { seedText, seedLabel: `クイズでまちがえた問題：${w.question}` });
@@ -122,7 +140,8 @@ export function viewRecords() {
       h("div", { class: "head" },
         h("span", { class: `badge ${r.parentAttention}` }, { high: "要確認", medium: "ヒントで完成", low: "自力でOK" }[r.parentAttention] ?? r.parentAttention),
         h("span", { class: "badge mode" }, MODES[r.mode]?.label ?? r.mode),
-        h("span", { class: "date" }, `${fmtDate(r.startedAt)}${isQuiz ? "" : `・${r.finalState}`}`)),
+        h("span", { class: "date" }, `${fmtDate(r.startedAt)}${isQuiz ? "" : `・${r.finalState}`}`),
+        progressLabel(r) ? h("span", { class: "progress-tag" }, progressLabel(r)) : null),
       h("div", { class: "unit" }, isQuiz ? `${r.unit || "クイズ"} ${r.score}/${r.total}問正解` : r.unit),
       r.problem ? h("div", { class: "muted" }, r.problem) : null,
       !isQuiz && (r.questionType || r.stuckStage) ? h("div", {}, h("b", {}, "設問の型："), r.questionType || "—", "　", h("b", {}, "つまずいた段階："), r.stuckStage || "—") : null,
