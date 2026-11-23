@@ -1,0 +1,19 @@
+name = "katekyo-worker"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# prompts/*.md を文字列として取り込む（プロンプトはコードに埋め込まず、デプロイ時に同梱する）
+rules = [
+  { type = "Text", globs = ["**/*.md"], fallthrough = true }
+]
+
+[vars]
+# 呼び出しを許可するフロントのオリジン（カンマ区切り）
+ALLOWED_ORIGINS = "https://yamady0711.github.io,http://localhost:8000,http://127.0.0.1:8000"
+# 思考の深さ（low / medium / high）。返事が遅ければ low、質が足りなければ medium
+EFFORT = "low"
+
+# シークレット（wrangler.toml には書かない）:
+#   npx wrangler secret put ANTHROPIC_API_KEY
+#   npx wrangler secret put APP_PASSCODE
