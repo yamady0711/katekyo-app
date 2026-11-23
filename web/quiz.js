@@ -48,14 +48,37 @@ export function viewQuiz(practice = false) {
     return;
   }
 
+  runQuiz({
+    title: practice ? "🃏 練習クイズ" : "🃏 今日のクイズ", back: "#subject/chiri", cards: queue, mode: "chiri",
+    unitLabel: practice ? "地理クイズ（練習）" : "地理クイズ", askMode: "chiri",
+    onAnswer: (card, correct) => {
+      if (practice && correct) return; // 練習では、正解しても間隔はのばさない
+      const deck = getDeck();
+      const c = deck.find((x) => x.id === card.id);
+      if (!c) return;
+      if (correct) { c.box = Math.min((c.box ?? 0) + 1, INTERVALS.length - 1); c.right = (c.right ?? 0) + 1; }
+      else { c.box = 0; c.wrong = (c.wrong ?? 0) + 1; }
+      c.due = todayStr(correct ? INTERVALS[c.box] : 1);
+      saveDeck(deck);
+    },
+  });
+}
+
+// ============ 4択クイズの共通部分（地理カード・ことばクイズ・社会クイズで使う） ============
+// cards: [{ id, question, answer, wrongChoices, why, unit }]
+// askMode: "chiri"（地理の対話で「なぜ」）または "tool"（かんたんクイズのふりかえり）
+
+export function runQuiz({ title, back, cards, mode, unitLabel, onAnswer = () => {}, askMode = "tool" }) {
+  const queue = [...cards];
   const total = queue.length;
   const results = new Map(); // id → { correct, chosen }（1回目の答え）
   const retried = new Set();
   let index = 0;
   const startedAt = new Date().toISOString();
   const body = h("div", { class: "page quiz" });
-  $app.replaceChildren(topbar(practice ? "🃏 練習クイズ" : "🃏 今日のクイズ", async () => {
-    if (await confirmDialog("クイズをやめる？", "やめる", "ここまでの結果は記録されません")) go("#subject/chiri");
+  $app.replaceChildren(topbar(title, async () => {
+    if (index === 0 && !results.size) return go(back);
+    if (await confirmDialog("クイズをやめる？", "やめる", "ここまでの結果は記録されません")) go(back);
   }), body);
 
   function show() {
@@ -77,13 +100,14 @@ export function viewQuiz(practice = false) {
       });
       if (!isRetry) {
         results.set(card.id, { correct, chosen });
-        updateCard(card.id, correct);
+        onAnswer(card, correct);
       }
       if (!correct && !retried.has(card.id)) { retried.add(card.id); queue.push(card); }
       feedback.replaceChildren(h("div", { class: `feedback ${correct ? "ok" : "ng"}` },
         h("div", { class: "big" }, correct ? "⭕ せいかい！" : `❌ 答えは「${card.answer}」`),
         card.why ? h("div", {}, "💡 ", card.why) : null),
         h("button", { class: "btn wide", onclick: next }, index + 1 < queue.length ? "つぎへ" : "結果を見る"));
+      feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
 
     body.replaceChildren(progress,
@@ -91,6 +115,7 @@ export function viewQuiz(practice = false) {
       h("div", { class: "question" }, card.question),
       h("div", { class: "choices" }, buttons),
       feedback);
+    window.scrollTo(0, 0);
   }
 
   function next() {
@@ -105,40 +130,35 @@ export function viewQuiz(practice = false) {
       question: c.question, answer: c.answer, chosen: results.get(c.id)?.chosen, why: c.why, unit: c.unit,
     }));
     const score = total - wrong.length;
-    const rate = score / total;
-    addRecord({
-      id: newId(), kind: "quiz", mode: "chiri", startedAt, endedAt: new Date().toISOString(),
-      unit: practice ? "地理クイズ（練習）" : "地理クイズ", score, total, wrong,
-      stumbles: wrong.map((w) => `${w.question} → ${w.answer}（答え：${w.chosen ?? "—"}）`),
-      finalState: rate === 1 ? "自力で完成" : "未完成",
-      parentAttention: rate >= 0.8 ? "low" : rate >= 0.5 ? "medium" : "high",
-      parentNote: `正答率 ${Math.round(rate * 100)}%`,
-    });
-    body.replaceChildren(
-      h("div", { class: "center" },
-        h("div", { class: "big-emoji" }, rate === 1 ? "🌟" : rate >= 0.7 ? "😊" : "💪"),
-        h("div", { class: "score" }, `${total}問中 ${score}問 せいかい`)),
-      wrong.length ? h("h2", {}, "まちがえた問題") : h("p", { class: "center" }, "全問正解！すごい！"),
-      ...wrong.map((w) => h("div", { class: "record" },
-        h("div", { class: "unit" }, w.question),
-        h("div", {}, "答え：", h("b", {}, w.answer)),
-        w.why ? h("div", { class: "note" }, "💡 ", w.why) : null,
-        h("div", { class: "row" }, h("button", { class: "btn small", onclick: () => askWhy(w) }, "🤔 なぜ？を先生に聞く")))),
-      h("button", { class: "btn wide", style: "margin-top:16px", onclick: () => go("#subject/chiri") }, "おわる"));
-  }
-
-  function updateCard(id, correct) {
-    if (practice && correct) return; // 練習では、正解しても間隔はのばさない
-    const deck = getDeck();
-    const c = deck.find((x) => x.id === id);
-    if (!c) return;
-    if (correct) { c.box = Math.min((c.box ?? 0) + 1, INTERVALS.length - 1); c.right = (c.right ?? 0) + 1; }
-    else { c.box = 0; c.wrong = (c.wrong ?? 0) + 1; }
-    c.due = todayStr(correct ? INTERVALS[c.box] : 1);
-    saveDeck(deck);
+    showQuizResult({ mode, unitLabel, askMode, back, startedAt, score, total, wrong, body });
   }
 
   show();
+}
+
+// 結果を記録して表示する（特殊算れんしゅうでも使う）
+export function showQuizResult({ mode, unitLabel, askMode, back, startedAt, score, total, wrong, body }) {
+  const rate = score / total;
+  addRecord({
+    id: newId(), kind: "quiz", mode, askMode, startedAt, endedAt: new Date().toISOString(),
+    unit: unitLabel, score, total, wrong,
+    stumbles: wrong.map((w) => `${w.question} → ${w.answer}（答え：${w.chosen ?? "—"}）`),
+    finalState: rate === 1 ? "自力で完成" : "未完成",
+    parentAttention: rate >= 0.8 ? "low" : rate >= 0.5 ? "medium" : "high",
+    parentNote: `${unitLabel}：正答率 ${Math.round(rate * 100)}%`,
+  });
+  body.replaceChildren(
+    h("div", { class: "center" },
+      h("div", { class: "big-emoji" }, rate === 1 ? "🌟" : rate >= 0.7 ? "😊" : "💪"),
+      h("div", { class: "score" }, `${total}問中 ${score}問 せいかい`)),
+    wrong.length ? h("h2", {}, "まちがえた問題") : h("p", { class: "center" }, "全問正解！すごい！"),
+    ...wrong.map((w) => h("div", { class: "record" },
+      h("div", { class: "unit" }, w.question),
+      h("div", {}, "答え：", h("b", {}, w.answer)),
+      w.why ? h("div", { class: "note" }, "💡 ", w.why) : null,
+      h("div", { class: "row" }, h("button", { class: "btn small", onclick: () => askWhy(w, mode, askMode) }, "🤔 なぜ？を先生に聞く")))),
+    h("button", { class: "btn wide", style: "margin-top:16px", onclick: () => go(back) }, "おわる"));
+  window.scrollTo(0, 0);
 }
 
 // ============ クイズを作る ============

@@ -9,6 +9,7 @@ import sansuPrompt from "../../prompts/sansu-baai.md";
 import chiriPrompt from "../../prompts/chiri.md";
 import summaryPrompt from "../../prompts/summary.md";
 import quizPrompt from "../../prompts/chiri-quiz.md";
+import toolHelpPrompt from "../../prompts/tool-help.md";
 
 interface Env {
   ANTHROPIC_API_KEY: string;
@@ -25,6 +26,7 @@ const MODES: Record<string, { label: string; prompt: string }> = {
   "rika-tentai": { label: "理科・天体", prompt: tentaiPrompt },
   "sansu-baai": { label: "算数・場合の数と規則性", prompt: sansuPrompt },
   "chiri": { label: "社会・地理", prompt: chiriPrompt },
+  "tool-help": { label: "かんたんクイズ・特殊算のふりかえり", prompt: toolHelpPrompt },
 };
 
 const LIMITS = {

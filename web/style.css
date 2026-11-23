@@ -243,3 +243,30 @@ button.thumb { border: none; padding: 0; }
 .deck { margin-top: 24px; }
 .deck summary { font-weight: 700; padding: 8px 0; cursor: pointer; }
 .deck-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding: 10px 0; }
+
+/* ---------- すぐできるツール ---------- */
+.section-title { font-size: 16px; color: var(--sub); margin: 20px 0 8px; }
+.tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 600px) { .tool-grid { grid-template-columns: repeat(4, 1fr); } }
+.tool-tile {
+  border: none; border-radius: var(--radius); padding: 14px 12px; text-align: left; min-height: 104px;
+  display: flex; flex-direction: column; gap: 2px; box-shadow: 0 2px 8px rgba(20,30,60,.06);
+}
+.tool-tile .emoji { font-size: 28px; line-height: 1.1; }
+.tool-tile b { font-size: 17px; }
+.tool-tile .desc { font-size: 13px; color: var(--sub); }
+.tool-tile.kokugo { background: var(--kokugo-bg); color: var(--kokugo); }
+.tool-tile.sansu { background: var(--sansu-bg); color: var(--sansu); }
+.tool-tile.tentai { background: var(--tentai-bg); color: var(--tentai); }
+.tool-tile.chiri { background: var(--chiri-bg); color: var(--chiri); }
+.big-action.plain-action { background: var(--card); border: 1px solid var(--line); color: var(--ink); box-shadow: none; padding: 14px 16px; }
+.big-action.plain-action .emoji { font-size: 20px; color: var(--blue); }
+.big-action.weak-action { background: #fdecec; color: var(--bad); box-shadow: none; padding: 14px 16px; }
+.big-action.weak-action .emoji { font-size: 22px; }
+.answer-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.num-input { width: 140px; font-size: 24px; font-weight: 800; padding: 8px 12px; border: 2px solid var(--line); border-radius: 12px; text-align: right; background: #fff; }
+.answer-row .unit { font-size: 18px; font-weight: 700; flex: 1; }
+.hints { display: grid; gap: 8px; margin-top: 12px; }
+.hint-item { background: #fff8e1; border-radius: 12px; padding: 10px 12px; }
+.solution { margin: 6px 0 0; padding-left: 1.3em; }
+.solution li { margin: 2px 0; }

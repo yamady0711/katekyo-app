@@ -6,6 +6,17 @@ import {
 } from "./lib.js";
 import { viewHistory, viewRecords, historyRow } from "./history.js";
 import { viewQuiz, viewQuizMake, dueCount } from "./quiz.js";
+import { viewKotoba, viewShakaiQuiz, viewTokushu } from "./tools.js";
+
+// 写真なしですぐできるツール
+const TOOLS = [
+  { hash: "#tool/kotoba", emoji: "🔤", name: "ことばクイズ", desc: "漢字・慣用句・ことわざ", cls: "kokugo", mode: "kokugo-kijutsu" },
+  { hash: "#tool/tokushu", emoji: "🧮", name: "特殊算れんしゅう", desc: "つるかめ算・旅人算など", cls: "sansu", mode: "sansu-baai" },
+  { hash: "#sims", emoji: "🔭", name: "天体の図", desc: "月・太陽・星を動かす", cls: "tentai", mode: "rika-tentai" },
+  { hash: "#tool/shakai", emoji: "🗺️", name: "社会クイズ", desc: "地理・歴史・公民", cls: "chiri", mode: "chiri" },
+];
+const toolTile = (t) => h("button", { class: `tool-tile ${t.cls}`, onclick: () => go(t.hash) },
+  h("span", { class: "emoji" }, t.emoji), h("b", {}, t.name), h("span", { class: "desc" }, t.desc));
 
 // ============ 画面：ホーム ============
 
@@ -27,13 +38,14 @@ async function viewHome() {
       h("div", { class: "logo" }, "かてきょ"),
       h("div", { class: "muted" }, "苦手なところを、いっしょに考えよう")),
     resumeBanner(current, viewHome),
+    h("h2", { class: "section-title" }, "すぐできる（写真なし）"),
+    h("div", { class: "tool-grid" }, TOOLS.map(toolTile)),
+    h("h2", { class: "section-title" }, "写真で問題を聞く・ふりかえり"),
     h("div", { class: "modes" },
       Object.entries(MODES).map(([key, m]) => h("button", { class: `mode-card ${m.cls}`, onclick: () => go(`#subject/${key}`) },
         h("span", { class: "emoji" }, m.emoji), h("span", { class: "name" }, m.label), h("span", { class: "desc" }, m.desc),
         key === "chiri" && due ? h("span", { class: "due-pill" }, `今日のクイズ ${due}問`) : null))),
     h("div", { class: "links" },
-      h("button", { class: "link-row", onclick: () => go("#sims") },
-        h("span", { class: "emoji" }, "🔭"), h("span", {}, h("b", {}, "天体の図で調べる"), h("span", { class: "muted" }, "月・太陽・星を自由に動かせるよ"))),
       h("button", { class: "link-row", onclick: () => go("#records") },
         h("span", { class: "emoji" }, "📒"), h("span", {}, h("b", {}, "記録（おうちの人）"), h("span", { class: "muted" }, "つまずきの記録・設定")))),
   ));
@@ -65,9 +77,9 @@ async function viewSubject(mode) {
       h("button", { class: "link-row", onclick: () => go("#quizmake") }, h("span", { class: "emoji" }, "➕"),
         h("span", {}, h("b", {}, "テキストからクイズを作る"), h("span", { class: "muted" }, "塾テキストのページを撮ると、クイズカードができる"))));
   }
-  if (mode === "rika-tentai") {
-    actions.push(h("button", { class: "link-row", onclick: () => go("#sims") }, h("span", { class: "emoji" }, "🔭"),
-      h("span", {}, h("b", {}, "図で調べる"), h("span", { class: "muted" }, "月・太陽・星を自由に動かせるよ"))));
+  for (const t of TOOLS.filter((t) => t.mode === mode)) {
+    actions.push(h("button", { class: "link-row", onclick: () => go(t.hash) }, h("span", { class: "emoji" }, t.emoji),
+      h("span", {}, h("b", {}, `${t.name}（写真なし）`), h("span", { class: "muted" }, t.desc))));
   }
 
   $app.replaceChildren(
@@ -213,7 +225,7 @@ async function viewChat() {
     log.append(live);
     scrollDown();
     try {
-      const reply = await streamChat(session.mode, session.messages, (full) => {
+      const reply = await streamChat(session.apiMode || session.mode, session.messages, (full) => {
         const next = aiBubble(full, false, true);
         live.replaceWith(next);
         live = next;
@@ -245,7 +257,7 @@ async function viewChat() {
     if (textOnly[textOnly.length - 1].role === "user" && textOnly.length > 1) textOnly.push({ role: "assistant", content: "（返事なし）" });
     let record = null, error = null;
     try {
-      const res = await api("/api/summary", { mode: session.mode, messages: textOnly });
+      const res = await api("/api/summary", { mode: session.apiMode || session.mode, messages: textOnly });
       record = (await res.json()).record;
     } catch (e) { error = e.message; }
 
@@ -312,6 +324,9 @@ function route() {
   if (hash === "#quiz") return viewQuiz();
   if (hash === "#quizmake") return viewQuizMake();
   if (hash === "#sims") return viewSims();
+  if (hash === "#tool/kotoba") return viewKotoba();
+  if (hash === "#tool/shakai") return viewShakaiQuiz();
+  if (hash === "#tool/tokushu") return viewTokushu();
   if (hash.startsWith("#sim/")) { viewSims(); return openSim(hash.slice(5)); }
   return viewHome();
 }

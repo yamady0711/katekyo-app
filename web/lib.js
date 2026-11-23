@@ -27,7 +27,7 @@ export const MODES = {
   },
 };
 
-export const LS = { records: "katekyo.records", pass: "katekyo.pass", worker: "katekyo.worker", deck: "katekyo.deck" };
+export const LS = { records: "katekyo.records", pass: "katekyo.pass", worker: "katekyo.worker", deck: "katekyo.deck", bank: "katekyo.bank" };
 
 export function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; }
@@ -321,6 +321,7 @@ export async function startSession(mode, { problem = [], answer = [] }, opts = {
     id: newId(), mode, startedAt: new Date().toISOString(),
     setup: { problem: problem.length, answer: answer.length },
     seedLabel: opts.seedLabel || null,
+    apiMode: opts.apiMode || null, // AIに使うプロンプトを科目と別にしたいとき（例：tool-help）
     messages: [{ role: "user", content }],
   };
   await idb.set("current", session);
