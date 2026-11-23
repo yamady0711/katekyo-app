@@ -10,7 +10,7 @@ const STATE_ICON = { "自力で完成": "🌟", "ヒントで完成": "⭕", "�
 // 科目ページの「ふりかえり」一覧の1行
 export function historyRow(r) {
   const isQuiz = r.kind === "quiz";
-  const title = isQuiz ? `クイズ ${r.score}/${r.total}問正解` : r.unit || "（記録）";
+  const title = isQuiz ? `${r.unit || "クイズ"} ${r.score}/${r.total}問正解` : r.unit || "（記録）";
   const sub = isQuiz
     ? (r.wrong?.length ? `まちがえた：${r.wrong.map((w) => w.answer).slice(0, 3).join("、")}` : "全問正解！")
     : (r.nextFocus ? `つぎ：${r.nextFocus}` : r.achieved || "");
@@ -40,7 +40,7 @@ export async function viewHistory(id) {
 
   const head = h("div", { class: "record" },
     h("div", { class: "head" }, h("span", { class: "badge mode" }, m.label), h("span", { class: "date" }, fmtDate(r.startedAt))),
-    h("div", { class: "unit" }, r.kind === "quiz" ? `クイズ ${r.score}/${r.total}問正解` : r.unit),
+    h("div", { class: "unit" }, r.kind === "quiz" ? `${r.unit || "クイズ"} ${r.score}/${r.total}問正解` : r.unit),
     r.problem ? h("div", { class: "muted" }, r.problem) : null,
     r.seedLabel ? h("div", { class: "muted" }, r.seedLabel) : null);
   body.append(head);
@@ -55,7 +55,7 @@ export async function viewHistory(id) {
           h("div", { class: "unit" }, w.question),
           h("div", {}, "答え：", h("b", {}, w.answer), w.chosen ? h("span", { class: "muted" }, `（きみの答え：${w.chosen}）`) : null),
           w.why ? h("div", { class: "note" }, "💡 ", w.why) : null,
-          h("div", { class: "row" }, h("button", { class: "btn small", onclick: () => askWhy(w) }, "🤔 なぜ？を先生に聞く"))));
+          h("div", { class: "row" }, h("button", { class: "btn small", onclick: () => askWhy(w, r.mode, r.askMode ?? "chiri") }, "🤔 なぜ？を先生に聞く"))));
       }
     }
     return;
@@ -93,11 +93,18 @@ async function retry(r, photos) {
 }
 
 // クイズでまちがえた問題について、先生と「なぜ」を話す
-export async function askWhy(w) {
+// askMode "chiri"：地理カード（地理の対話で）／"tool"：かんたんクイズ・特殊算（ふりかえり用のプロンプトで）
+export async function askWhy(w, mode = "chiri", askMode = "chiri") {
   const current = await idb.get("current");
   if (current && !(await confirmDialog("とちゅうの学習があるよ。この問題を始める？", "始める", "とちゅうの学習は消えます"))) return;
-  const seedText = `【地理クイズでまちがえた問題】\n問題：${w.question}\n正解：${w.answer}\n${w.chosen ? `ぼくの答え：${w.chosen}\n` : ""}テキストにもとづく説明：${w.why || "（なし）"}\n\nなぜそうなるのか、いっしょに考えたいです。`;
-  await startSession("chiri", {}, { seedText, seedLabel: `クイズでまちがえた問題：${w.question}` });
+  if (askMode === "chiri") {
+    const seedText = `【地理クイズでまちがえた問題】\n問題：${w.question}\n正解：${w.answer}\n${w.chosen ? `ぼくの答え：${w.chosen}\n` : ""}テキストにもとづく説明：${w.why || "（なし）"}\n\nなぜそうなるのか、いっしょに考えたいです。`;
+    await startSession("chiri", {}, { seedText, seedLabel: `クイズでまちがえた問題：${w.question}` });
+  } else {
+    const subject = MODES[mode]?.label ?? "";
+    const seedText = `【${subject}・${w.unit || "かんたんクイズ"}でまちがえた問題】\n問題：${w.question}\n正解：${w.answer}\n${w.chosen ? `ぼくの答え：${w.chosen}\n` : ""}アプリの解説：${w.why || "（なし）"}\n\nどうしてまちがえたのか、いっしょに考えたいです。`;
+    await startSession(mode, {}, { seedText, seedLabel: `まちがえた問題：${w.question}`, apiMode: "tool-help" });
+  }
   go("#chat");
 }
 
@@ -115,7 +122,7 @@ export function viewRecords() {
         h("span", { class: `badge ${r.parentAttention}` }, { high: "要確認", medium: "ヒントで完成", low: "自力でOK" }[r.parentAttention] ?? r.parentAttention),
         h("span", { class: "badge mode" }, MODES[r.mode]?.label ?? r.mode),
         h("span", { class: "date" }, `${fmtDate(r.startedAt)}${isQuiz ? "" : `・${r.finalState}`}`)),
-      h("div", { class: "unit" }, isQuiz ? `クイズ ${r.score}/${r.total}問正解` : r.unit),
+      h("div", { class: "unit" }, isQuiz ? `${r.unit || "クイズ"} ${r.score}/${r.total}問正解` : r.unit),
       r.problem ? h("div", { class: "muted" }, r.problem) : null,
       !isQuiz && (r.questionType || r.stuckStage) ? h("div", {}, h("b", {}, "設問の型："), r.questionType || "—", "　", h("b", {}, "つまずいた段階："), r.stuckStage || "—") : null,
       r.stumbles?.length ? h("div", {}, h("b", {}, isQuiz ? "まちがえた問題" : "つまずき"), h("ul", {}, r.stumbles.map((s) => h("li", {}, s)))) : null,
