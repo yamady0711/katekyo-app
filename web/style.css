@@ -270,3 +270,28 @@ button.thumb { border: none; padding: 0; }
 .hint-item { background: #fff8e1; border-radius: 12px; padding: 10px 12px; }
 .solution { margin: 6px 0 0; padding-left: 1.3em; }
 .solution li { margin: 2px 0; }
+
+/* ---------- AIの使用量 ---------- */
+.usage h3 { font-size: 16px; margin: 18px 0 8px; }
+.usage-hero { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.usage-big { font-size: 34px; font-weight: 800; line-height: 1.2; }
+.usage-meter { flex: 1; min-width: 180px; }
+.ubars { display: grid; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.ubar { display: grid; grid-template-columns: 7.5em 1fr 8.5em; gap: 10px; align-items: center; font-size: 14px; }
+.ubar-label { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ubar-value { color: var(--sub); font-variant-numeric: tabular-nums; text-align: right; min-width: 5.5em; }
+.ubar-track { height: 12px; background: #eef1f7; border-radius: 4px; overflow: hidden; display: block; }
+.ubar-track.big { height: 14px; margin-top: 4px; }
+.ubar-fill { display: block; height: 100%; background: var(--blue); border-radius: 4px; }
+.ubar-fill.over { background: var(--bad); }
+.usage-alert { background: #fff6e0; color: #7a5600; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; font-weight: 700; border: none; text-align: left; }
+.usage-alert.over { background: #fdecec; color: var(--bad); }
+.wide-alert { width: 100%; }
+.usage-detail { margin-top: 12px; }
+.usage-detail summary { cursor: pointer; font-weight: 700; }
+.usage-detail dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 15px; }
+.usage-detail dt { color: var(--sub); }
+.usage-detail dd { margin: 0; font-variant-numeric: tabular-nums; }
+.budget-label { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.budget-input { width: 90px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; }
+@media (max-width: 420px) { .ubar { grid-template-columns: 5.5em 1fr 7.5em; font-size: 13px; } }

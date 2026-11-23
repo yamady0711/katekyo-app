@@ -4,6 +4,7 @@ import {
   MODES, LS, lsGet, lsSet, idb, h, renderText, fmtDate, $app, confirmDialog, go, topbar, showImage,
   getRecords, findRecord, deleteRecord, startSession,
 } from "./lib.js";
+import { usageSection, overBudget } from "./usage.js";
 
 const STATE_ICON = { "自力で完成": "🌟", "ヒントで完成": "⭕", "未完成": "🔁" };
 
@@ -149,7 +150,7 @@ export function viewRecords() {
   }
 
   function exportJson() {
-    const data = { version: 2, records: getRecords(), deck: lsGet(LS.deck, []) };
+    const data = { version: 3, records: getRecords(), deck: lsGet(LS.deck, []), bank: lsGet(LS.bank, {}), usage: lsGet(LS.usage, []) };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = h("a", { href: URL.createObjectURL(blob), download: `katekyo-backup-${new Date().toISOString().slice(0, 10)}.json` });
     document.body.append(a); a.click(); a.remove();
@@ -168,6 +169,13 @@ export function viewRecords() {
       if (!Array.isArray(records)) throw new Error();
       lsSet(LS.records, mergeById(getRecords(), records).sort((a, b) => (b.startedAt > a.startedAt ? 1 : -1)));
       if (Array.isArray(data.deck)) lsSet(LS.deck, mergeById(lsGet(LS.deck, []), data.deck));
+      if (data.bank && typeof data.bank === "object") lsSet(LS.bank, { ...data.bank, ...lsGet(LS.bank, {}) });
+      if (Array.isArray(data.usage)) {
+        const key = (e) => `${e.date}|${e.mode}`;
+        const map = new Map(data.usage.map((e) => [key(e), e]));
+        for (const e of lsGet(LS.usage, [])) map.set(key(e), e); // この端末の記録を優先
+        lsSet(LS.usage, [...map.values()]);
+      }
       draw();
       alert(`記録${records.length}件${data.deck ? `・クイズ${data.deck.length}枚` : ""}を読みこみました`);
     } catch { alert("読みこめませんでした"); }
@@ -179,9 +187,13 @@ export function viewRecords() {
   $app.replaceChildren(
     topbar("記録（おうちの人）", "#"),
     h("div", { class: "page" },
+      overBudget() ? h("button", { class: "usage-alert over wide-alert", onclick: () => document.getElementById("usage")?.scrollIntoView({ behavior: "smooth" }) },
+        "⚠️ 今月のAI使用量が目安をこえました（下の「AIの使用量」を見てください）") : null,
       filters, list,
+      h("h2", { id: "usage" }, "AIの使用量"),
+      usageSection(),
       h("h2", {}, "バックアップ"),
-      h("p", { class: "muted" }, "記録とクイズカードは、この端末のブラウザの中にだけ保存されています（問題の写真は含まれません）。ときどき書き出しておくと安心です。"),
+      h("p", { class: "muted" }, "記録・クイズカード・AIの使用量は、この端末のブラウザの中にだけ保存されています（問題の写真は含まれません）。ときどき書き出しておくと安心です。"),
       h("div", { class: "row" },
         h("button", { class: "btn small", onclick: exportJson }, "書き出す（JSON）"),
         h("button", { class: "btn small ghost", onclick: () => importInput.click() }, "読みこむ"), importInput),

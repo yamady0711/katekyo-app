@@ -1,7 +1,7 @@
 // 地理クイズ：塾テキストの写真からカードを作り、間隔をあけてくり返し出題する
 import {
   LS, lsGet, lsSet, h, $app, $overlay, closeOverlay, confirmDialog, go, topbar, busyDialog, toast,
-  api, addRecord, newId, photoSection,
+  api, addRecord, newId, photoSection, logUsage,
 } from "./lib.js";
 import { askWhy } from "./history.js";
 
@@ -182,6 +182,7 @@ export function viewQuizMake() {
       content.push({ type: "text", text: "この塾テキストのページから、クイズカードを作ってください。" });
       const res = await api("/api/quiz", { mode: "chiri", messages: [{ role: "user", content }] });
       const data = await res.json();
+      logUsage("chiri", data.usage);
       closeOverlay();
       review(data);
     } catch (e) {

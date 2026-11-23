@@ -35,6 +35,7 @@ web/       PWA 本体（GitHub Pages で公開）
   history.js  ふりかえり・保護者向け記録
   quiz.js  4択クイズの共通部分・地理クイズ（カード作成・間隔反復）
   tools.js すぐできるツール（ことばクイズ・社会クイズ・特殊算れんしゅう）
+  usage.js AIの使用量（トークン・概算料金）の表示
   data/    ツールの問題集と特殊算の問題生成
   sims/    天体シミュレーター（AIを使わず、計算で正確に描く）
 ```
@@ -99,6 +100,12 @@ cd worker && echo 'ANTHROPIC_API_KEY=sk-ant-...' > .dev.vars && echo 'APP_PASSCO
 ```
 
 ブラウザで `http://localhost:8000` を開き、設定で Worker の URL を `http://localhost:8787` にする。
+
+## AIの使用量を確認する
+
+- アプリの「記録（おうちの人）」→「AIの使用量」で、今月の概算料金・直近14日・科目別が見られる（この端末で使った分）。「月の目安」を入れておくと、こえたときにホームと記録ページに警告が出る
+- 料金の単価は `web/usage.js` の `PRICE`（Claude Opus 5.5：入力$4・出力$20・キャッシュ書き$5・キャッシュ読み$0.20／100万トークン）
+- 正確な請求額は Anthropic Console の Usage／Cost で確認する。Console の Limits で月の上限も設定しておく
 
 ## 調整のしかた
 
