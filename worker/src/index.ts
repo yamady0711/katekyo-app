@@ -10,6 +10,17 @@ import chiriPrompt from "../../prompts/chiri.md";
 import summaryPrompt from "../../prompts/summary.md";
 import quizPrompt from "../../prompts/chiri-quiz.md";
 import toolHelpPrompt from "../../prompts/tool-help.md";
+import themeTopgun from "../../prompts/themes/topgun.md";
+import themeMj from "../../prompts/themes/mj.md";
+import themeIsagi from "../../prompts/themes/isagi.md";
+import themeNakagawa from "../../prompts/themes/nakagawa.md";
+import themeSenna from "../../prompts/themes/senna.md";
+import themeChiron from "../../prompts/themes/chiron.md";
+
+// 応援テーマ（子どもの好きなもの）。フロントの web/themes.js のキーと対応
+const THEME_PROMPTS: Record<string, string> = {
+  topgun: themeTopgun, mj: themeMj, isagi: themeIsagi, nakagawa: themeNakagawa, senna: themeSenna, chiron: themeChiron,
+};
 
 interface Env {
   ANTHROPIC_API_KEY: string;
@@ -129,9 +140,9 @@ function effortOf(env: Env): "low" | "medium" | "high" {
 
 // ---------- /api/chat（ストリーミング） ----------
 
-function handleChat(mode: string, messages: InMessage[], env: Env, cors: Record<string, string>): Response {
+function handleChat(mode: string, messages: InMessage[], env: Env, cors: Record<string, string>, theme = ""): Response {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const system = `${commonPrompt}\n\n${MODES[mode].prompt}`;
+  const system = `${commonPrompt}\n\n${MODES[mode].prompt}${THEME_PROMPTS[theme] ? `\n\n${THEME_PROMPTS[theme]}` : ""}`;
   const enc = new TextEncoder();
 
   const body = new ReadableStream<Uint8Array>({
@@ -301,7 +312,7 @@ export default {
       if (!MODES[mode]) throw new BadRequest("モードが不正です");
       const isSummary = url.pathname === "/api/summary";
       const messages = validateMessages(body?.messages, !isSummary);
-      if (url.pathname === "/api/chat") return handleChat(mode, messages, env, cors);
+      if (url.pathname === "/api/chat") return handleChat(mode, messages, env, cors, String(body?.theme ?? ""));
       if (url.pathname === "/api/quiz") {
         if (mode !== "chiri" || messages.length !== 1) throw new BadRequest("クイズは地理の写真1回分だけ作れます");
         return await handleQuiz(messages, env, cors);

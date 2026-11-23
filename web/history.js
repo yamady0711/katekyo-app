@@ -2,7 +2,7 @@
 import { WORKER_URL } from "./config.js";
 import {
   MODES, LS, lsGet, lsSet, idb, h, renderText, fmtDate, $app, confirmDialog, go, topbar, showImage,
-  getRecords, findRecord, deleteRecord, startSession,
+  getRecords, findRecord, deleteRecord, startSession, nav, isStale,
 } from "./lib.js";
 import { usageSection, overBudget } from "./usage.js";
 
@@ -57,7 +57,9 @@ export async function viewHistory(id) {
     r.problem ? h("div", { class: "muted" }, r.problem) : null,
     r.seedLabel ? h("div", { class: "muted" }, r.seedLabel) : null);
   body.append(head);
+  const seq = nav.seq;
   const current = await idb.get("current");
+  if (isStale(seq)) return;
   const label = progressLabel(r, current?.id);
   if (label) head.querySelector(".head").append(h("span", { class: "progress-tag" }, label));
   if (r.inProgress && current?.id === r.id) {
@@ -89,6 +91,7 @@ export async function viewHistory(id) {
   ].filter(Boolean));
 
   const photos = r.hasPhotos ? await idb.get(`photos:${r.id}`) : null;
+  if (isStale(seq)) return;
   if (photos?.images?.length) {
     const problemImgs = photos.images.slice(0, photos.setup?.problem ?? photos.images.length);
     body.append(

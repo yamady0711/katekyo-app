@@ -297,3 +297,25 @@ button.thumb { border: none; padding: 0; }
 @media (max-width: 420px) { .ubar { grid-template-columns: 5.5em 1fr 7.5em; font-size: 13px; } }
 
 .progress-tag { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 700; color: #7a5600; background: #fff3cd; border-radius: 999px; padding: 0 8px; vertical-align: 1px; }
+
+/* ---------- 応援テーマ ---------- */
+.theme-hero { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 8px 0 4px; background: var(--card); border-radius: 20px; padding: 12px; box-shadow: 0 2px 10px rgba(20,30,60,.08); }
+@media (min-width: 600px) { .theme-hero { grid-template-columns: 1.1fr 1fr; align-items: center; } }
+.theme-art { width: 100%; height: auto; display: block; border-radius: 14px; }
+.theme-art.small { max-width: 260px; margin: 8px auto 4px; }
+.theme-msg { padding: 2px 4px; }
+.theme-from { font-size: 14px; font-weight: 700; color: var(--sub); }
+.theme-line { font-size: 20px; font-weight: 800; line-height: 1.45; margin: 4px 0 10px; }
+.theme-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.logo-small { font-weight: 800; letter-spacing: .05em; color: var(--sub); }
+.theme-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (min-width: 600px) { .theme-picker { grid-template-columns: repeat(3, 1fr); } }
+.theme-option { border: 2px solid var(--line); background: var(--card); border-radius: 14px; padding: 8px; text-align: left; display: flex; flex-direction: column; gap: 4px; }
+.theme-option.on { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue) inset; }
+.theme-option .muted { font-size: 12px; }
+.theme-thumb { width: 100%; border-radius: 10px; display: block; }
+.daily-icon { font-size: 40px; text-align: center; padding: 18px 0; background: #eef1f7; border-radius: 10px; }
+.msg.theme-banner { align-self: center; background: linear-gradient(90deg, #fff3cd, #ffe4f1); color: #6b3d00; font-weight: 800; text-align: center; }
+.cheer { margin-top: 6px; font-weight: 700; }
+.big-cheer { font-size: 18px; margin: 4px 0 8px; }
+.dialog .theme-art.small { margin-bottom: 8px; }

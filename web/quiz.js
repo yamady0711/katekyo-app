@@ -4,6 +4,7 @@ import {
   api, upsertRecord, newId, photoSection, logUsage,
 } from "./lib.js";
 import { askWhy } from "./history.js";
+import { cheer, themeArt } from "./themes.js";
 
 // 正解するたびに次に出すまでの日数をのばす（箱 0〜5）
 const INTERVALS = [0, 1, 3, 7, 14, 30];
@@ -117,7 +118,8 @@ export function runQuiz({ title, back, cards, mode, unitLabel, onAnswer = () => 
       }
       if (!correct && !retried.has(card.id)) { retried.add(card.id); queue.push(card); }
       feedback.replaceChildren(h("div", { class: `feedback ${correct ? "ok" : "ng"}` },
-        h("div", { class: "big" }, correct ? "⭕ せいかい！" : `❌ 答えは「${card.answer}」`),
+        h("div", { class: "big" }, correct ? `⭕ せいかい！ ${cheer("correct")}` : `❌ 答えは「${card.answer}」`),
+        correct ? null : h("div", { class: "cheer" }, cheer("wrong")),
         card.why ? h("div", {}, "💡 ", card.why) : null),
         h("button", { class: "btn wide", onclick: next }, index + 1 < queue.length ? "つぎへ" : "結果を見る"));
       feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -164,8 +166,9 @@ export function showQuizResult({ id = newId(), mode, unitLabel, askMode, back, s
   saveQuizRecord({ id, mode, unitLabel, askMode, startedAt, score, total, wrong, partial: false });
   body.replaceChildren(
     h("div", { class: "center" },
-      h("div", { class: "big-emoji" }, rate === 1 ? "🌟" : rate >= 0.7 ? "😊" : "💪"),
-      h("div", { class: "score" }, `${total}問中 ${score}問 せいかい`)),
+      themeArt(undefined, "theme-art small"),
+      h("div", { class: "score" }, `${total}問中 ${score}問 せいかい`),
+      h("div", { class: "cheer big-cheer" }, rate >= 0.7 ? cheer("finish") : cheer("wrong"))),
     wrong.length ? h("h2", {}, "まちがえた問題") : h("p", { class: "center" }, "全問正解！すごい！"),
     ...wrong.map((w) => h("div", { class: "record" },
       h("div", { class: "unit" }, w.question),

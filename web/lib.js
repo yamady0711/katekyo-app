@@ -1,6 +1,7 @@
 // 共通部品：保存・API・画面部品
 import { WORKER_URL } from "./config.js";
 import { SIMS } from "./sims/index.js";
+import { currentThemeKey } from "./themes.js";
 
 // ============ 設定・保存 ============
 
@@ -187,8 +188,8 @@ export function logUsage(mode, usage) {
   lsSet(LS.usage, ledger.filter((x) => x.date >= cutoff));
 }
 
-export async function streamChat(mode, messages, onText, logMode = mode) {
-  const res = await api("/api/chat", { mode, messages });
+export async function streamChat(mode, messages, onText, logMode = mode, theme = "") {
+  const res = await api("/api/chat", { mode, messages, theme });
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let buf = "", full = "";
@@ -264,6 +265,9 @@ export function openSim(key) {
 // ============ ルーター・共通の画面部品 ============
 
 let router = () => {};
+// 画面の切りかえ番号。非同期の画面は、待っているあいだに別の画面に移ったら描画しない
+export const nav = { seq: 0 };
+export const isStale = (seq) => seq !== nav.seq;
 export function setRouter(fn) { router = fn; }
 export function go(hash) { if (location.hash === hash) router(); else location.hash = hash; }
 
@@ -412,6 +416,7 @@ export async function startSession(mode, { problem = [], answer = [] }, opts = {
     setup: { problem: problem.length, answer: answer.length },
     seedLabel: opts.seedLabel || null,
     apiMode: opts.apiMode || null, // AIに使うプロンプトを科目と別にしたいとき（例：tool-help）
+    theme: currentThemeKey(), // 応援テーマ（学習の途中では変えない＝キャッシュが効く）
     messages: [{ role: "user", content }],
   };
   await idb.set("current", session);

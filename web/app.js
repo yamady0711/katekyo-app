@@ -1,13 +1,14 @@
 import { SIMS } from "./sims/index.js";
 import {
   MODES, idb, h, parseReply, renderText, fmtDate, shrinkImage, imgSrc, api, streamChat,
-  $app, $overlay, closeOverlay, confirmDialog, openSim, setRouter, go, topbar, busyDialog,
+  $app, $overlay, closeOverlay, confirmDialog, openSim, setRouter, go, topbar, busyDialog, nav, isStale,
   getRecords, upsertRecord, startSession, photoSection, saveSessionProgress, summarizeSession, closeCurrentSession,
 } from "./lib.js";
 import { viewHistory, viewRecords, historyRow } from "./history.js";
 import { viewQuiz, viewQuizMake, dueCount } from "./quiz.js";
 import { viewKotoba, viewShakaiQuiz, viewTokushu } from "./tools.js";
 import { overBudget } from "./usage.js";
+import { THEMES, THEME_KEYS, currentThemeKey, currentTheme, themeSetting, setThemeSetting, cheer, themeArt } from "./themes.js";
 
 // 写真なしですぐできるツール
 const TOOLS = [
@@ -32,12 +33,12 @@ function resumeBanner(current, onDiscard) {
 }
 
 async function viewHome() {
+  const seq = nav.seq;
   const current = await idb.get("current");
+  if (isStale(seq)) return;
   const due = dueCount();
   $app.replaceChildren(h("div", { class: "page" },
-    h("div", { class: "hero" },
-      h("div", { class: "logo" }, "かてきょ"),
-      h("div", { class: "muted" }, "苦手なところを、いっしょに考えよう")),
+    themeHero(),
     resumeBanner(current, viewHome),
     h("h2", { class: "section-title" }, "すぐできる（写真なし）"),
     h("div", { class: "tool-grid" }, TOOLS.map(toolTile)),
@@ -52,12 +53,42 @@ async function viewHome() {
   ));
 }
 
+// ============ 応援テーマ ============
+
+function themeHero() {
+  const key = currentThemeKey();
+  const t = THEMES[key];
+  return h("div", { class: `theme-hero theme-${key}` },
+    themeArt(key),
+    h("div", { class: "theme-msg" },
+      h("div", { class: "theme-from" }, `${t.emoji} ${t.coach}より`),
+      h("div", { class: "theme-line" }, cheer("hello", key)),
+      h("div", { class: "theme-foot" },
+        h("span", { class: "logo-small" }, "かてきょ"),
+        h("button", { class: "btn small plain", onclick: pickTheme }, "🎨 テーマを変える"))));
+}
+
+function pickTheme() {
+  const current = themeSetting();
+  const choose = (v) => { setThemeSetting(v); closeOverlay(); viewHome(); };
+  $overlay.replaceChildren(h("div", { class: "sheet" },
+    h("div", { class: "topbar" }, h("h1", {}, "🎨 応援テーマを選ぼう"), h("button", { class: "btn small", onclick: closeOverlay }, "とじる")),
+    h("div", { class: "body theme-picker" },
+      h("button", { class: `theme-option ${current === "daily" ? "on" : ""}`, onclick: () => choose("daily") },
+        h("span", { class: "daily-icon" }, "🔀"), h("b", {}, "日がわり"), h("span", { class: "muted" }, "毎日ちがうテーマ")),
+      THEME_KEYS.map((k) => h("button", { class: `theme-option ${current === k ? "on" : ""}`, onclick: () => choose(k) },
+        themeArt(k, "theme-thumb"), h("b", {}, `${THEMES[k].emoji} ${THEMES[k].label}`), h("span", { class: "muted" }, THEMES[k].sub))))));
+  $overlay.hidden = false;
+}
+
 // ============ 画面：科目のページ（始める＋ふりかえり） ============
 
 async function viewSubject(mode) {
+  const seq = nav.seq;
   const m = MODES[mode];
   if (!m) return go("#");
   const current = await idb.get("current");
+  if (isStale(seq)) return;
   const records = getRecords().filter((r) => r.mode === mode);
 
   async function startNew() {
@@ -136,7 +167,9 @@ function viewSetup(mode) {
 // ============ 画面：チャット ============
 
 async function viewChat() {
+  const seq = nav.seq;
   const session = await idb.get("current");
+  if (isStale(seq)) return;
   if (!session) return go("#");
   const m = MODES[session.mode];
   let pendingImage = null;
@@ -185,8 +218,11 @@ async function viewChat() {
     return el;
   }
 
+  const themeKey = THEMES[session.theme] ? session.theme : currentThemeKey();
+  const startBanner = h("div", { class: "msg theme-banner" }, `${THEMES[themeKey].emoji} ${cheer("start", themeKey)}`);
+
   function renderLog() {
-    log.replaceChildren(...session.messages.map((msg, i) => bubbleFor(msg, i, i === session.messages.length - 1)));
+    log.replaceChildren(startBanner, ...session.messages.map((msg, i) => bubbleFor(msg, i, i === session.messages.length - 1)));
     scrollDown();
   }
 
@@ -230,7 +266,7 @@ async function viewChat() {
         live.replaceWith(next);
         live = next;
         scrollDown();
-      }, session.mode);
+      }, session.mode, session.theme || "");
       session.messages.push({ role: "assistant", content: reply });
       await idb.set("current", session);
       saveSessionProgress(session);
@@ -260,7 +296,8 @@ async function viewChat() {
     });
     await idb.del("current");
     $overlay.replaceChildren(h("div", { class: "dialog" },
-      h("h3", {}, "おつかれさま！"),
+      themeArt(themeKey, "theme-art small"),
+      h("h3", {}, cheer("finish", themeKey)),
       h("p", {}, saved ? "今日の学習を記録したよ。「ふりかえり」でいつでも見られるよ。" : "記録の保存に失敗しました。おうちの人に伝えてね。"),
       h("button", { class: "btn wide", onclick: () => { closeOverlay(); go(`#subject/${session.mode}`); } }, "OK")));
   }
@@ -293,6 +330,7 @@ function pickSim() {
 // ============ ルーター ============
 
 function route() {
+  nav.seq++;
   closeOverlay();
   window.scrollTo(0, 0);
   const hash = location.hash || "#";
