@@ -30,14 +30,15 @@
 | 時期 | 内容 |
 |---|---|
 | 11月下旬（最優先） | 国語記述モード ＋ 理科・天体モード（対話＋シミュレーター）を完成させる |
-| 12月 | 算数A類型（場合の数・規則性）、地理クイズ |
+| 12月 | 算数A類型（場合の数・規則性）、地理クイズ（実装済み・運用しながら調整） |
 | 12月後半 | 余力があれば算数の図形・体積 |
 | 1月 | 新機能の開発は止め、運用に専念 |
 
 ## ディレクトリ
 - `prompts/`：システムプロンプト（common.md＝共通、モード別、summary.md＝記録用）。Worker がデプロイ時に同梱する
-- `worker/`：Cloudflare Worker（`/api/chat` ストリーミング、`/api/summary` 記録作成）
-- `web/`：PWA（ビルドなしの素のJS）。`web/sims/` は天体シミュレーター
+- `worker/`：Cloudflare Worker（`/api/chat` ストリーミング、`/api/summary` 記録作成、`/api/quiz` 地理クイズカード作成）
+- `web/`：PWA（ビルドなしの素のJS）。`web/sims/` は天体シミュレーター、`web/quiz.js` は地理クイズ、`web/history.js` はふりかえり
+- 記録は localStorage（`katekyo.records`）、クイズカードは `katekyo.deck`、学習中のセッションと問題の写真は IndexedDB
 - 手順は README.md
 
 ## 開発上の注意
