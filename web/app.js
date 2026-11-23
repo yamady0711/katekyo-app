@@ -465,7 +465,7 @@ async function viewChat() {
     const records = lsGet(LS.records, []);
     records.unshift({
       id: session.id, mode: session.mode, startedAt: session.startedAt, endedAt: new Date().toISOString(),
-      turns, ...(record ?? { unit: "（記録の自動作成に失敗）", problem: "", stumbles: [], achieved: "", hintLevel: null, finalState: "未完成", parentAttention: "high", parentNote: `会話の記録を直接見てください（${error}）`, aiConcerns: "" }),
+      turns, ...(record ?? { unit: "（記録の自動作成に失敗）", problem: "", questionType: "", stuckStage: "", nextFocus: "", stumbles: [], achieved: "", hintLevel: null, finalState: "未完成", parentAttention: "high", parentNote: `会話の記録を直接見てください（${error}）`, aiConcerns: "" }),
       transcript,
     });
     const saved = lsSet(LS.records, records);
@@ -525,8 +525,10 @@ function viewRecords() {
         h("span", { class: "date" }, `${fmtDate(r.startedAt)}・${r.finalState}${r.hintLevel != null ? `・ヒント段階${r.hintLevel}` : ""}`)),
       h("div", { class: "unit" }, r.unit),
       r.problem ? h("div", { class: "muted" }, r.problem) : null,
+      r.questionType || r.stuckStage ? h("div", {}, h("b", {}, "設問の型："), r.questionType || "—", "　", h("b", {}, "つまずいた段階："), r.stuckStage || "—") : null,
       r.stumbles?.length ? h("div", {}, h("b", {}, "つまずき"), h("ul", {}, r.stumbles.map((s) => h("li", {}, s)))) : null,
       r.achieved ? h("div", {}, h("b", {}, "できたこと："), r.achieved) : null,
+      r.nextFocus ? h("div", {}, h("b", {}, "次回の重点："), r.nextFocus) : null,
       r.parentNote ? h("div", { class: "note" }, "👨 ", r.parentNote) : null,
       r.aiConcerns ? h("div", { class: "concern" }, "⚠️ AIの不安：", r.aiConcerns) : null,
       h("details", {}, h("summary", {}, "会話を見る"), h("pre", {}, r.transcript || "")),
